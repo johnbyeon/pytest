@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LDraw Viewer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #deebf7; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: #333;
+            font-family: sans-serif;
+            pointer-events: none;
+            user-select: none;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">LDraw Viewer - Drag to rotate, Scroll to zoom</div>
+
+    <!-- Import Map for Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
+
+        let camera, scene, renderer, controls;
+
+        init();
+        animate();
+
+        function init() {
+            const container = document.createElement( 'div' );
+            document.body.appendChild( container );
+
+            // Camera
+            camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 10000 );
+            camera.position.set( 150, 200, 250 );
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color( 0xdeebf7 );
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight( 0xaaaaaa );
+            scene.add( ambientLight );
+
+            const directionalLight = new THREE.DirectionalLight( 0xffffff, 1.5 );
+            directionalLight.position.set( 100, 100, 100 );
+            scene.add( directionalLight );
+
+            // Grid
+            const gridHelper = new THREE.GridHelper( 1000, 50, 0x888888, 0xbbbbbb );
+            scene.add( gridHelper );
+
+            // Axes
+            const axesHelper = new THREE.AxesHelper( 500 );
+            scene.add( axesHelper );
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer( { antialias: true } );
+            renderer.setPixelRatio( window.devicePixelRatio );
+            renderer.setSize( window.innerWidth, window.innerHeight );
+            container.appendChild( renderer.domElement );
+
+            // Controls
+            controls = new OrbitControls( camera, renderer.domElement );
+            controls.enableDamping = true;
+
+            // Load LDraw Model
+            loadModel();
+
+            window.addEventListener( 'resize', onWindowResize );
+        }
+
+        function loadModel() {
+            // Parts Library Path (Official LDraw library parts)
+            // Using a CDN mirror of the official library.
+            const partsPath = 'https://cdn.jsdelivr.net/gh/grompe/ldraw-parts-library@master/';
+
+            const loader = new LDrawLoader();
+            // We set the path for the loader to use when resolving included files (parts)
+            loader.setPath( partsPath );
+
+            // Fetch the local LDR file text manually to avoid path conflicts
+            fetch('/static/sample.ldr')
+                .then( response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.text();
+                })
+                .then( text => {
+                    // Parse the content.
+                    // We pass partsPath as the second argument so it knows where to find the parts (3024.dat etc)
+                    loader.parse( text, partsPath, function ( group ) {
+
+                        // Center the model
+                        const box = new THREE.Box3().setFromObject( group );
+                        const center = box.getCenter( new THREE.Vector3() );
+
+                        // Shift model so center is at (0,0,0) or bottom is at 0
+                        group.position.x += ( group.position.x - center.x );
+                        group.position.z += ( group.position.z - center.z );
+                        group.position.y += ( group.position.y - box.min.y ); // Sit on grid
+
+                        scene.add( group );
+                        console.log("Model loaded successfully");
+                    }, function(err) {
+                        console.error("LDraw Parse Error:", err);
+                    });
+                })
+                .catch( error => {
+                    console.error( 'Error loading model:', error );
+                    document.getElementById('info').textContent = 'Error loading model: ' + error.message;
+                });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize( window.innerWidth, window.innerHeight );
+        }
+
+        function animate() {
+            requestAnimationFrame( animate );
+            controls.update();
+            renderer.render( scene, camera );
+        }
+    </script>
+</body>
+</html>
